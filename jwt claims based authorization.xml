@@ -1,0 +1,71 @@
+<policies>
+    <inbound>
+		<!-- validates RS256 JWT token -->
+        <validate-jwt header-name="massrover_token" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized"
+            require-expiration-time="true" require-signed-tokens="true">
+             <audiences>
+                 <audience>audience id</audience>
+             </audiences>
+             <issuers>
+                 <issuer>issuer id</issuer>
+             </issuers>
+             <required-claims>
+                 <claim name="role" match="any">
+                     <value>admin</value>
+                     <value>moderator</value>
+                     <value>reader</value>
+                 </claim>
+             </required-claims>
+             <openid-config url="https://massrover.idenityserver/.well-known/openid-configuration" />
+         </validate-jwt>
+        
+		<!-- sets the role claim to the context variable -->
+        <set-variable name="massrover_role" 
+            value="@(context.Request.Headers["massrover_token"].First().Split(' ')[1].AsJwt()?.Claims["role"].FirstOrDefault())" />
+        
+		<!-- performs authorization based on role claim and allowed http method -->
+        <choose>
+            <when condition="@(context.Variables.GetValue("massrover_role").Equals("admin"))">
+                 <forward-request/>
+            </when>
+            <when condition="@(context.Variables.GetValue("massrover_role").Equals("moderator")">
+                <when condition="@(context.Request.Method.Equals("delete", StringComparison.OrdinalIgnoreCase))">
+                    <return-response>
+                        <set-status code="403" reason="Forbidden" />
+                        <set-body>Moderators cannot perform delete action</set-body>
+                    </return-response>
+                </when>
+                <otherwise>
+                    <forward-request/>
+                </otherwise>
+            </when>
+            <when condition="@(context.Variables.GetValue("massrover_role").Equals("reader")">
+                <when condition="@(context.Request.Method.Equals("get", StringComparison.OrdinalIgnoreCase))">
+                    <forward-request/>
+                </when>
+                <otherwise>
+                    <return-response>
+                        <set-status code="403" reason="Forbidden" />
+                        <set-body>Readers have only read access</set-body>
+                    </return-response>
+                </otherwise>
+            </when>
+            <otherwise>
+                <return-response">
+                    <set-status code="405" reason="Not Allowed" />
+                    <set-body>Invalid role claim</set-body>
+                </return-response>
+            </otherwise>
+         </choose>
+        <base />
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
